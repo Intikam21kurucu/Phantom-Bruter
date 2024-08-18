@@ -10,3 +10,12 @@
 | `Vf passw`       | Verify Password     | Check if your password is correct               |
 | `hash_passw`     | Hash Password       | Hashes a password                               |
 | `hash_brute`     | Brute Force Hash    | Hash brute force                                |
+
+# install
+````
+git clone https://github.com/Intikam21kurucu/Phantom-Bruter
+cd Phantom-Bruter
+chmod +x install.sh
+./install.sh
+````
+now if you are `phbrute` write on term 0hantom bruter working
