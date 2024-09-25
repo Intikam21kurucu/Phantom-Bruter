@@ -1,3 +1,3 @@
 chmod +x phbrute
 mv phbrute $PREFIX/bin
-echo 'mv conpleted passing
+echo 'mv conpleted passing'
